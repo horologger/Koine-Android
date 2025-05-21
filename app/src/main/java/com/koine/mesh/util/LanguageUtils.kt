@@ -1,0 +1,87 @@
+/*
+ * Copyright (c) 2025 Meshtastic LLC
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package com.koine.mesh.util
+
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.edit
+import androidx.core.os.LocaleListCompat
+import com.koine.mesh.android.Logging
+import com.koine.mesh.R
+import org.xmlpull.v1.XmlPullParser
+import java.util.Locale
+
+object LanguageUtils : Logging {
+
+    const val SYSTEM_DEFAULT = "zz"
+    const val SYSTEM_MANAGED = "appcompat"
+
+    fun getLocale(): String {
+        return AppCompatDelegate.getApplicationLocales().toLanguageTags().ifEmpty { SYSTEM_DEFAULT }
+    }
+
+    fun setLocale(lang: String) {
+        AppCompatDelegate.setApplicationLocales(
+            if (lang == SYSTEM_DEFAULT) {
+                LocaleListCompat.getEmptyLocaleList()
+            } else {
+                LocaleListCompat.forLanguageTags(lang)
+            }
+        )
+    }
+
+    fun migrateLanguagePrefs(prefs: SharedPreferences) {
+        val currentLang = prefs.getString("lang", SYSTEM_DEFAULT) ?: SYSTEM_DEFAULT
+        debug("Migrating in-app language prefs: $currentLang")
+        prefs.edit { putString("lang", SYSTEM_MANAGED) }
+        setLocale(currentLang)
+    }
+
+    /**
+     * Build a list from locales_config.xml
+     * of native language names paired to its Locale tag (ex: "English", "en")
+     */
+    fun getLanguageTags(context: Context): Map<String, String> {
+        val languageTags = mutableListOf(SYSTEM_DEFAULT)
+        try {
+            context.resources.getXml(R.xml.locales_config).use {
+                while (it.eventType != XmlPullParser.END_DOCUMENT) {
+                    if (it.eventType == XmlPullParser.START_TAG && it.name == "locale") {
+                        languageTags += it.getAttributeValue(0)
+                    }
+                    it.next()
+                }
+            }
+        } catch (e: Exception) {
+            errormsg("Error parsing locale_config.xml ${e.message}")
+        }
+        return languageTags.associateBy { tag ->
+            val loc = Locale(tag)
+            when (tag) {
+                SYSTEM_DEFAULT -> context.getString(R.string.preferences_system_default)
+                "fr-HT" -> context.getString(R.string.fr_HT)
+                "pt-BR" -> context.getString(R.string.pt_BR)
+                "zh-CN" -> context.getString(R.string.zh_CN)
+                "zh-TW" -> context.getString(R.string.zh_TW)
+                else -> loc.getDisplayLanguage(loc)
+                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(loc) else it.toString() }
+            }
+        }
+    }
+}

@@ -1,0 +1,109 @@
+Satochip Sign Message Implementation Guide
+
+1. INITIAL CONNECTION
+   - Try T0 protocol (will fail with 0x8010000F)
+   - Connect using T1 protocol
+   - Create CardService and CardConnection objects
+
+2. CARD SELECTION
+   APDU: 00 A4 04 00 08 53 61 74 6F 43 68 69 70
+   Expected Response: [], SW1: 90, SW2: 00
+
+3. GET CARD STATUS
+   APDU: B0 3C 00 00
+   Expected Response: [status bytes], SW1: 90, SW2: 00
+   - Parse response to check card state
+   - Verify card is initialized
+
+4. INITIALIZE SECURE CHANNEL
+   a. Get card's public key
+      APDU: B0 02 00 00
+      Expected Response: [public key bytes], SW1: 90, SW2: 00
+      - Parse response to get card's public key
+
+   b. Generate random challenge
+      - Generate 32 random bytes using secure random
+      - This will be used as the session key
+
+   c. Encrypt challenge
+      - Use card's public key to encrypt the challenge
+      - Use RSA encryption with PKCS#1 v1.5 padding
+      - Result will be 256 bytes (2048-bit RSA)
+
+   d. Send encrypted challenge
+      APDU: B0 81 00 00 41 [encrypted challenge]
+      Expected Response: [encrypted response], SW1: 90, SW2: 00
+      - Card will decrypt challenge using its private key
+      - Card will use challenge as session key
+      - Card will encrypt response with session key
+
+   e. Decrypt response
+      - Decrypt response using session key
+      - Verify response matches expected format
+      - Store session key for future APDU encryption
+
+5. PIN VERIFICATION (if required)
+   APDU: 80 82 00 00 [length] [PIN bytes]
+   Expected Response: [encrypted data], SW1: 90, SW2: 00
+   - If SW1=9C, SW2=06: PIN required
+   - Prompt user for PIN
+   - Convert PIN to bytes
+   - Send PIN verification APDU
+
+6. SIGN MESSAGE
+   Function Parameters:
+   - keynbr: int (key slot number)
+   - pubkey: byte[] (public key)
+   - message: String (message to sign)
+   - hmac: byte[] (optional HMAC)
+   - altcoin: String (optional altcoin identifier)
+
+   Steps:
+   a. Prepare message data
+      - Convert message to bytes
+      - Add altcoin identifier if provided
+      - Add HMAC if provided
+
+   b. Split message into chunks if needed
+      - Maximum APDU data length: 255 bytes
+      - For each chunk:
+        APDU: B0 82 00 00 [length] [encrypted chunk data]
+        Expected Response: [encrypted data], SW1: 90, SW2: 00
+
+   c. Final sign command
+      APDU: B0 82 00 00 [length] [encrypted final data]
+      Expected Response: [encrypted signature], SW1: 90, SW2: 00
+
+   d. Process response
+      - Decrypt response using session key
+      - Convert signature to Base64
+      - Return signature
+
+7. ERROR HANDLING
+   Common error codes:
+   - 0x8010000F: Protocol mismatch
+   - 0x9C21: Secure channel not initialized
+   - 0x9C06: PIN required
+   - 0x6300-0x63C3: Wrong PIN (with remaining tries)
+   - 0x6983: PIN blocked
+   - 0x9C04: Setup not done
+
+8. SECURITY CONSIDERATIONS
+   - All APDUs after secure channel initialization must be encrypted
+   - PIN should be cleared from memory after use
+   - Session keys should be cleared after operation
+   - Verify card responses before proceeding
+   - Handle card removal during operation
+
+9. IMPLEMENTATION NOTES
+   - Use try-catch blocks for all card operations
+   - Implement proper cleanup in finally blocks
+   - Handle card removal events
+   - Implement proper error recovery
+   - Log all APDU commands and responses for debugging
+
+10. REQUIRED DEPENDENCIES
+    - javax.smartcardio for card communication
+    - BouncyCastle for cryptography
+    - Base64 encoding/decoding
+    - Secure random number generation 

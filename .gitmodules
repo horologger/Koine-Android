@@ -1,0 +1,6 @@
+[submodule "app/src/main/proto"]
+	path = app/src/main/proto
+	url = https://horologger-github/horologger/protobufs.git
+[submodule "design"]
+	path = design
+	url = https://horologger-github/horologger/design.git
